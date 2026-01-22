@@ -1,1 +1,75 @@
+import os
+import json
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
 
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+CHANNEL_USERNAME = os.getenv("CHANNEL_USERNAME")
+ADMIN_ID = int(os.getenv("ADMIN_ID"))
+
+DATA_FILE = "files.json"
+
+if os.path.exists(DATA_FILE):
+    with open(DATA_FILE, "r") as f:
+        FILE_IDS = json.load(f)
+else:
+    FILE_IDS = []
+
+
+# ✅ Force join check
+def is_joined(bot, user_id):
+    try:
+        member = bot.get_chat_member(CHANNEL_USERNAME, user_id)
+        return member.status in ["member", "administrator", "creator"]
+    except:
+        return False
+
+
+# ✅ Start command
+def start(update: Update, context: CallbackContext):
+    user_id = update.effective_user.id
+
+    if not is_joined(context.bot, user_id):
+        buttons = InlineKeyboardMarkup([
+            [InlineKeyboardButton("Join Channel", url=f"https://t.me/{CHANNEL_USERNAME[1:]}")]
+        ])
+        update.message.reply_text("❌ Pehle channel join karo", reply_markup=buttons)
+        return
+
+    update.message.reply_text("✅ Welcome! Files bhej raha hoon 👇")
+
+    for fid in FILE_IDS:
+        context.bot.send_document(update.effective_chat.id, fid)
+
+
+# ✅ Admin upload
+def save_file(update: Update, context: CallbackContext):
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    file_id = None
+
+    if update.message.document:
+        file_id = update.message.document.file_id
+    elif update.message.photo:
+        file_id = update.message.photo[-1].file_id
+    elif update.message.video:
+        file_id = update.message.video.file_id
+
+    if file_id:
+        FILE_IDS.append(file_id)
+
+        with open(DATA_FILE, "w") as f:
+            json.dump(FILE_IDS, f)
+
+        update.message.reply_text("✅ File saved!")
+
+
+updater = Updater(BOT_TOKEN, use_context=True)
+dp = updater.dispatcher
+
+dp.add_handler(CommandHandler("start", start))
+dp.add_handler(MessageHandler(Filters.all, save_file))
+
+updater.start_polling()
+updater.idle()
